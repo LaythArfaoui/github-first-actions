@@ -1,0 +1,9 @@
+name: first workflow
+on: workflow_dispatcher
+jobs:
+  first-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: print greeting
+        run: echo "hellpo layth"
+        
