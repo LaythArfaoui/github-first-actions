@@ -30,7 +30,7 @@ jobs:
           PRD_PORT: ${{ vars.PRD_PORT }}
         run: |
           ENV_FILE="./.env"
-          echo "" > "$ENV_FILE" # Clear or create the file
+          echo "" > "$ENV_FILE"
 
           BRANCH_NAME=$(echo "${GITHUB_REF#refs/heads/}" | tr '[:lower:]' '[:upper:]')
           PREFIX="${BRANCH_NAME}_"
@@ -42,6 +42,9 @@ jobs:
             echo "$name=$value" >> "$ENV_FILE" 
           done
           export $(cat "$ENV_FILE" | xargs)
+
+      - name: List Files
+        run: ls -al
 
       - name: Build and Push Docker Image
         run: |
