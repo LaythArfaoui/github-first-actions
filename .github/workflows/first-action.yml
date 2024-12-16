@@ -1,39 +1,60 @@
-name: Deploy to Environments
+name: Build and Push Docker Image
 
 on:
   push:
     branches:
       - Dev
       - Prd
-      - main
+  pull_request:
+    branches:
+      - Dev
+      - Prd
 
 jobs:
-  deploy:
-    name: Deploy to ${{ github.ref_name }}
+  build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+      - name: Checkout
+        uses: actions/checkout@v3
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and Push Docker Image
-        uses: docker/build-push-action@v2
-        with:
-          context: .
-          push: true
-          tags: laytharfaoui/front:${{ github.ref_name }}
-
-      - name: Deploy
+      - name: Set up Environment Variables
+        env:
+          DEV_PORT: ${{ vars.DEV_PORT }}
+          PRD_PORT: ${{ vars.PRD_PORT }}
         run: |
-          if [ "${{ github.ref_name }}" == "Dev" ]; then
-            echo "Deployment to Dev environment complete."
-          elif [ "${{ github.ref_name }}" == "Prd" ]; then
-            echo "Deployment to QA environment complete."
-          elif [ "${{ github.ref_name }}" == "main" ]; then
-            echo "Deployment to Prod environment complete."
+          ENV_FILE="./.env"
+          echo "" > "$ENV_FILE" # Clear or create the file
+
+          BRANCH_NAME=$(echo "${GITHUB_REF#refs/heads/}" | tr '[:lower:]' '[:upper:]')
+          PREFIX="${BRANCH_NAME}_"
+
+          for var in $(env | grep "^$PREFIX"); do
+            var_name=$(echo "$var" | cut -d '=' -f 1)
+            value=$(echo "$var" | cut -d '=' -f 2-)
+            name="${var_name#$PREFIX}" 
+            echo "$name=$value" >> "$ENV_FILE" 
+          done
+          export $(cat "$ENV_FILE" | xargs)
+
+      - name: Build and Push Docker Image
+        run: |
+          SHORT_SHA=${GITHUB_SHA::7}
+
+          if [[ "${GITHUB_REF}" == "refs/heads/dev" ]]; then
+            TAG="dev-$SHORT_SHA"
+          elif [[ "${GITHUB_REF}" == "refs/heads/prd" ]]; then
+            TAG="prd-$SHORT_SHA"
+          else
+            echo "Branch not handled. Skipping Docker build."
+            exit 1
           fi
+
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/laytharfaoui/front:$TAG .
+          docker push ${{ secrets.DOCKER_USERNAME }}/laytharfaoui/front:$TAG
