@@ -47,9 +47,9 @@ jobs:
         run: |
           SHORT_SHA=${GITHUB_SHA::7}
 
-          if [[ "${GITHUB_REF}" == "refs/heads/dev" ]]; then
+          if [[ "${GITHUB_REF}" == "refs/heads/Dev" ]]; then
             TAG="dev-$SHORT_SHA"
-          elif [[ "${GITHUB_REF}" == "refs/heads/prd" ]]; then
+          elif [[ "${GITHUB_REF}" == "refs/heads/Prd" ]]; then
             TAG="prd-$SHORT_SHA"
           else
             echo "Branch not handled. Skipping Docker build."
