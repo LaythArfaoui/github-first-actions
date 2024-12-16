@@ -1,90 +1,60 @@
-name: Deploy to Environments
+name: Build and Push Docker Image
 
 on:
   push:
     branches:
-      - Dev       # Trigger for Dev environment
-      - Qa       # Trigger for QA environment
-      - main      # Trigger for Prod environment
+      - Dev
+      - Prd
+  pull_request:
+    branches:
+      - Dev
+      - Prd
 
 jobs:
-  dev:
-    name: Deploy to Dev
+  build:
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
 
-      - name: Debug Secrets
-        run: echo "Username: ${{ secrets.DOCKER_USERNAME }}"
-        # Note: The password won't be echoed as secrets are masked in logs.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and Push Docker Image for Dev
-        uses: docker/build-push-action@v2
-        with:
-          context: .
-          push: true
-          tags: yourusername/front:dev
+      - name: Set up Environment Variables
+        env:
+          DEV_PORT: ${{ vars.DEV_PORT }}
+          PRD_PORT: ${{ vars.PRD_PORT }}
+        run: |
+          ENV_FILE="./.env"
+          echo "" > "$ENV_FILE" # Clear or create the file
 
-      - name: Deploy to Dev
-        run: echo "Deployment to Dev environment complete."
+          BRANCH_NAME=$(echo "${GITHUB_REF#refs/heads/}" | tr '[:lower:]' '[:upper:]')
+          PREFIX="${BRANCH_NAME}_"
 
-  Qa:
-    name: Deploy to QA
-    runs-on: ubuntu-latest
-    needs: dev
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+          for var in $(env | grep "^$PREFIX"); do
+            var_name=$(echo "$var" | cut -d '=' -f 1)
+            value=$(echo "$var" | cut -d '=' -f 2-)
+            name="${var_name#$PREFIX}" 
+            echo "$name=$value" >> "$ENV_FILE" 
+          done
+          export $(cat "$ENV_FILE" | xargs)
 
-      - name: Debug Secrets
-        run: echo "Username: ${{ secrets.DOCKER_USERNAME }}"
+      - name: Build and Push Docker Image
+        run: |
+          SHORT_SHA=${GITHUB_SHA::7}
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+          if [[ "${GITHUB_REF}" == "refs/heads/dev" ]]; then
+            TAG="dev-$SHORT_SHA"
+          elif [[ "${GITHUB_REF}" == "refs/heads/prd" ]]; then
+            TAG="prd-$SHORT_SHA"
+          else
+            echo "Branch not handled. Skipping Docker build."
+            exit 1
+          fi
 
-      - name: Build and Push Docker Image for QA
-        uses: docker/build-push-action@v2
-        with:
-          context: .
-          push: true
-          tags: laytharfaoui/front:qa
-
-      - name: Deploy to QA
-        run: echo "Deployment to QA environment complete."
-
-  prod:
-    name: Deploy to Prod
-    runs-on: ubuntu-latest
-    needs: Qa
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-
-      - name: Debug Secrets
-        run: echo "Username: ${{ secrets.DOCKER_USERNAME }}"
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Build and Push Docker Image for Prod
-        uses: docker/build-push-action@v2
-        with:
-          context: .
-          push: true
-          tags: yourusername/front:prod
-
-      - name: Deploy to Prod
-        run: echo "Deployment to Prod environment complete."
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/laytharfaoui/front:$TAG .
+          docker push ${{ secrets.DOCKER_USERNAME }}/laytharfaoui/front:$TAG
